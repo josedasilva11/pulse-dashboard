@@ -2,6 +2,8 @@
 
 > **Live demo:** https://josedasilva11.github.io/pulse-dashboard/  (static client-side version with simulated data, no backend needed)
 
+![Pulse Dashboard live demo](assets/demo.gif)
+
 
 A real-time business KPI dashboard. A FastAPI backend serves sales, bookings, revenue and top-item metrics from a SQLite sample dataset and pushes live updates over Server-Sent Events (SSE) as new events arrive. A single-file dark frontend renders KPI cards and charts with Chart.js and updates live, no page refresh needed. This proves real-time dashboards for the numbers that matter.
 
