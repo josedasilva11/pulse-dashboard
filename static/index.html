@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pulse Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #131a26;
+      --panel-2: #18212f;
+      --line: #243043;
+      --text: #e6edf6;
+      --muted: #8a97ab;
+      --accent: #4cc9f0;
+      --accent-2: #7b61ff;
+      --good: #38d39f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 80% -10%, #15203200, #0b0f17), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--good); box-shadow: 0 0 12px var(--good);
+      animation: pulse 1.6s infinite ease-in-out;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+    h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+    .status { font-size: 13px; color: var(--muted); }
+    main { padding: 24px 28px 40px; max-width: 1180px; margin: 0 auto; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .card {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .card .label { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .card .value { font-size: 30px; font-weight: 700; letter-spacing: .5px; }
+    .card .value.flash { animation: flash .7s ease; }
+    @keyframes flash {
+      0% { color: var(--accent); }
+      100% { color: var(--text); }
+    }
+    .charts { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+    .chart-card {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .chart-card h2 { font-size: 14px; margin: 0 0 14px; color: var(--muted); font-weight: 600; }
+    .chart-wrap { position: relative; height: 280px; }
+    .feed {
+      margin-top: 22px;
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .feed h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+    .feed ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+    .feed li {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+    .feed li:last-child { border-bottom: none; }
+    .tag {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+      padding: 2px 8px; border-radius: 999px; margin-right: 10px;
+    }
+    .tag.order { background: rgba(76,201,240,.15); color: var(--accent); }
+    .tag.booking { background: rgba(123,97,255,.18); color: var(--accent-2); }
+    .amount { color: var(--good); font-variant-numeric: tabular-nums; }
+    @media (max-width: 860px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .charts { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Pulse Dashboard</h1>
+    </div>
+    <div class="status" id="status">connecting...</div>
+  </header>
+  <main>
+    <section class="cards">
+      <div class="card"><div class="label">Revenue</div><div class="value" id="kpi-revenue">0</div></div>
+      <div class="card"><div class="label">Orders</div><div class="value" id="kpi-orders">0</div></div>
+      <div class="card"><div class="label">Bookings</div><div class="value" id="kpi-bookings">0</div></div>
+      <div class="card"><div class="label">Avg order value</div><div class="value" id="kpi-aov">0</div></div>
+    </section>
+    <section class="charts">
+      <div class="chart-card">
+        <h2>Revenue over time (hourly)</h2>
+        <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h2>Top items by revenue</h2>
+        <div class="chart-wrap"><canvas id="topItemsChart"></canvas></div>
+      </div>
+    </section>
+    <section class="feed">
+      <h2>Live event feed</h2>
+      <ul id="feed"></ul>
+    </section>
+  </main>
+  <script>
+    const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
+    const els = {
+      status: document.getElementById('status'),
+      revenue: document.getElementById('kpi-revenue'),
+      orders: document.getElementById('kpi-orders'),
+      bookings: document.getElementById('kpi-bookings'),
+      aov: document.getElementById('kpi-aov'),
+      feed: document.getElementById('feed'),
+    };
+
+    function flash(el) {
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+
+    const accent = '#4cc9f0';
+    const accent2 = '#7b61ff';
+    const grid = 'rgba(255,255,255,0.06)';
+    const muted = '#8a97ab';
+    Chart.defaults.color = muted;
+    Chart.defaults.font.family = "-apple-system, Segoe UI, Roboto, sans-serif";
+
+    const revenueChart = new Chart(document.getElementById('revenueChart'), {
+      type: 'line',
+      data: { labels: [], datasets: [{
+        label: 'Revenue', data: [],
+        borderColor: accent, backgroundColor: 'rgba(76,201,240,0.15)',
+        fill: true, tension: 0.35, pointRadius: 2, borderWidth: 2,
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: grid } },
+          y: { grid: { color: grid }, beginAtZero: true },
+        },
+      },
+    });
+
+    const topItemsChart = new Chart(document.getElementById('topItemsChart'), {
+      type: 'bar',
+      data: { labels: [], datasets: [{
+        label: 'Revenue', data: [],
+        backgroundColor: accent2, borderRadius: 6,
+      }]},
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: grid }, beginAtZero: true },
+          y: { grid: { display: false } },
+        },
+      },
+    });
+
+    function applySnapshot(s) {
+      const k = s.kpis;
+      els.revenue.textContent = fmt.format(k.revenue);
+      els.orders.textContent = k.orders;
+      els.bookings.textContent = k.bookings;
+      els.aov.textContent = fmt.format(k.avg_order_value);
+
+      revenueChart.data.labels = s.revenue_series.map(p => p.label);
+      revenueChart.data.datasets[0].data = s.revenue_series.map(p => p.revenue);
+      revenueChart.update('none');
+
+      topItemsChart.data.labels = s.top_items.map(p => p.item);
+      topItemsChart.data.datasets[0].data = s.top_items.map(p => p.revenue);
+      topItemsChart.update('none');
+    }
+
+    function pushFeed(ev) {
+      const li = document.createElement('li');
+      li.innerHTML =
+        '<span><span class="tag ' + ev.kind + '">' + ev.kind + '</span>' + ev.item + '</span>' +
+        '<span class="amount">' + fmt.format(ev.amount) + '</span>';
+      els.feed.prepend(li);
+      while (els.feed.children.length > 25) els.feed.removeChild(els.feed.lastChild);
+    }
+
+    function connect() {
+      const source = new EventSource('/api/stream');
+      source.onopen = () => { els.status.textContent = 'live'; };
+      source.onerror = () => { els.status.textContent = 'reconnecting...'; };
+      source.onmessage = (msg) => {
+        const payload = JSON.parse(msg.data);
+        if (payload.snapshot) applySnapshot(payload.snapshot);
+        if (payload.event) {
+          pushFeed(payload.event);
+          [els.revenue, els.orders, els.bookings, els.aov].forEach(flash);
+        }
+      };
+    }
+
+    connect();
+  </script>
+</body>
+</html>
