@@ -9,8 +9,12 @@ from __future__ import annotations
 import random
 import sys
 import time
+from pathlib import Path
 
 import httpx
+
+# Allow running directly (python scripts/simulate.py): put project root on sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import base_url
 
