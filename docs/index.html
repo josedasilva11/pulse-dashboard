@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulse Dashboard, live demo</title>
+<meta name="description" content="Real-time business KPI dashboard, live demo with simulated data. Built by José Pedro Silva, marjers.com" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0e14; --panel:#141822; --panel2:#1b212e; --line:#262d3b;
+    --text:#e8ecf4; --muted:#8b94a7; --accent:#4cc9b0; --accent2:#7aa2ff; --warn:#f0a64f;
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1100px;margin:0 auto;padding:22px 18px 60px;}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+  .logo{font-size:22px;font-weight:800;letter-spacing:-.5px;}
+  .logo span{color:var(--accent);}
+  .live{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
+        border:1px solid var(--line);padding:5px 10px;border-radius:999px;}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 rgba(76,201,176,.6);animation:p 1.6s infinite;}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(76,201,176,.5)}70%{box-shadow:0 0 0 9px rgba(76,201,176,0)}100%{box-shadow:0 0 0 0 rgba(76,201,176,0)}}
+  .by{margin-left:auto;font-size:12px;color:var(--muted);}
+  .by a{color:var(--accent2);text-decoration:none;}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+  .card .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+  .card .v{font-size:26px;font-weight:800;margin-top:6px;}
+  .card .d{font-size:12px;margin-top:4px;color:var(--accent);}
+  .grid{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-bottom:14px;}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px;}
+  .panel h2{font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;}
+  .feed{max-height:260px;overflow:hidden;}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;}
+  .row:last-child{border-bottom:0;}
+  .tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.5px;}
+  .tag.order{background:rgba(76,201,176,.15);color:var(--accent);}
+  .tag.booking{background:rgba(122,162,255,.15);color:var(--accent2);}
+  .row .name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .row .amt{color:var(--muted);font-variant-numeric:tabular-nums;}
+  @media(max-width:820px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span>◆</span> Pulse</div>
+    <div class="live"><span class="dot"></span> LIVE, simulated data</div>
+    <div class="by">demo by <a href="https://marjers.com">marjers.com</a></div>
+  </header>
+
+  <div class="cards">
+    <div class="card"><div class="k">Revenue today</div><div class="v" id="kp-rev">EUR 0</div><div class="d" id="kp-rev-d">&nbsp;</div></div>
+    <div class="card"><div class="k">Orders</div><div class="v" id="kp-ord">0</div><div class="d" id="kp-ord-d">&nbsp;</div></div>
+    <div class="card"><div class="k">Bookings</div><div class="v" id="kp-bok">0</div><div class="d" id="kp-bok-d">&nbsp;</div></div>
+    <div class="card"><div class="k">Avg ticket</div><div class="v" id="kp-avg">EUR 0</div><div class="d">&nbsp;</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel"><h2>Revenue, last 30 min</h2><canvas id="rev" height="120"></canvas></div>
+    <div class="panel"><h2>Top items</h2><canvas id="top" height="120"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h2>Live activity</h2>
+    <div class="feed" id="feed"></div>
+  </div>
+</div>
+
+<script>
+// Self-contained live demo: simulates orders and bookings client-side so the
+// dashboard moves without any backend. The real repo (FastAPI + SSE) drives the
+// same UI from a live data source.
+const ITEMS = [["Espresso",2.5],["Cappuccino",3.2],["Croissant",2.4],["Avocado Toast",8.5],["House Lunch",13],["Cold Brew",4.5],["Cheesecake",5.5]];
+const SLOTS = ["Table for 2","Table for 4","Private Room","Patio Seat"];
+const NAMES = ["Ana","Bruno","Chloé","Daniel","Eva","Femke","Gonçalo","Hugo","Inès","João","Klara","Léa","Marco","Nora","Pedro","Sofia","Tom"];
+const rnd = a => a[Math.floor(Math.random()*a.length)];
+const eur = n => "EUR " + n.toLocaleString("en-US",{maximumFractionDigits:0});
+
+let revenue=0, orders=0, bookings=0;
+const itemTotals = Object.fromEntries(ITEMS.map(i=>[i[0],0]));
+const series = Array.from({length:30},()=>0);
+
+const revChart = new Chart(document.getElementById("rev"),{
+  type:"line",
+  data:{labels:series.map((_,i)=>"-"+(30-i)+"m"),
+    datasets:[{data:series.slice(),borderColor:"#4cc9b0",backgroundColor:"rgba(76,201,176,.12)",fill:true,tension:.35,pointRadius:0,borderWidth:2}]},
+  options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#8b94a7",maxTicksLimit:6},grid:{display:false}},y:{ticks:{color:"#8b94a7"},grid:{color:"#262d3b"}}}}
+});
+const topChart = new Chart(document.getElementById("top"),{
+  type:"bar",
+  data:{labels:ITEMS.map(i=>i[0]),datasets:[{data:ITEMS.map(()=>0),backgroundColor:"#7aa2ff",borderRadius:6}]},
+  options:{indexAxis:"y",plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#8b94a7"},grid:{color:"#262d3b"}},y:{ticks:{color:"#8b94a7"},grid:{display:false}}}}
+});
+
+function addRow(tag,name,amt){
+  const feed=document.getElementById("feed");
+  const div=document.createElement("div");div.className="row";
+  const t=new Date().toLocaleTimeString("en-GB");
+  div.innerHTML='<span class="tag '+tag+'">'+tag.toUpperCase()+'</span>'+
+    '<span class="name">'+name+'</span>'+
+    '<span class="amt">'+(amt?eur(amt):"")+'</span>';
+  feed.prepend(div);
+  while(feed.children.length>8) feed.removeChild(feed.lastChild);
+}
+
+function tick(){
+  // seed a little baseline then random events
+  const n = 1 + Math.floor(Math.random()*2);
+  for(let i=0;i<n;i++){
+    if(Math.random()<0.7){
+      const it=rnd(ITEMS), qty=1+Math.floor(Math.random()*3), amt=Math.round(it[1]*qty);
+      revenue+=amt; orders++; itemTotals[it[0]]+=qty;
+      series[series.length-1]+=amt;
+      addRow("order", qty+"x "+it[0]+", "+rnd(NAMES), amt);
+    }else{
+      bookings++;
+      addRow("booking", rnd(SLOTS)+", "+rnd(NAMES), 0);
+    }
+  }
+  document.getElementById("kp-rev").textContent=eur(revenue);
+  document.getElementById("kp-ord").textContent=orders;
+  document.getElementById("kp-bok").textContent=bookings;
+  document.getElementById("kp-avg").textContent=eur(orders?revenue/orders:0);
+  document.getElementById("kp-rev-d").textContent="▲ live";
+  document.getElementById("kp-ord-d").textContent="▲ live";
+  document.getElementById("kp-bok-d").textContent="▲ live";
+
+  topChart.data.datasets[0].data=ITEMS.map(i=>itemTotals[i[0]]);
+  topChart.update("none");
+}
+
+// shift the revenue line every 6 ticks (about every 9s) to scroll time
+let ticks=0;
+setInterval(()=>{
+  tick(); ticks++;
+  if(ticks%6===0){ series.shift(); series.push(0);
+    revChart.data.datasets[0].data=series.slice(); revChart.update("none"); }
+  else { revChart.data.datasets[0].data=series.slice(); revChart.update("none"); }
+}, 1500);
+tick();
+</script>
+</body>
+</html>
